@@ -64,6 +64,25 @@ def bundle(root):
 
 
 class ConfigurationTests(unittest.TestCase):
+    def test_active_monitor_tolerates_removed_temp_files_but_final_inventory_is_strict(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            transient = root / "temporary"
+            transient.write_text("data")
+            original = Path.lstat
+            def vanished(path):
+                if path == transient:
+                    raise FileNotFoundError("temporary file removed")
+                return original(path)
+            with patch.object(Path, "lstat", vanished):
+                ci.tree_inventory(root, 1024, 10, allow_disappeared=True)
+                with self.assertRaises(FileNotFoundError):
+                    ci.tree_inventory(root, 1024, 10)
+            transient.unlink()
+            (root / "linked").symlink_to(root / "absent")
+            with self.assertRaises(ci.Refusal):
+                ci.tree_inventory(root, 1024, 10, allow_disappeared=True)
+
     def test_unconfigured_example_is_parseable_but_not_runtime_ready(self):
         value = json.loads((ROOT / "config/public-ci.example.json").read_text())
         ci.load_config(value)

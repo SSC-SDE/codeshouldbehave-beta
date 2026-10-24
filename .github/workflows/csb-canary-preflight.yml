@@ -43,3 +43,36 @@ jobs:
         shell: bash
         run: |
           /usr/bin/bwrap --unshare-all --clearenv --ro-bind /usr /usr --ro-bind-try /lib /lib --ro-bind-try /lib64 /lib64 --ro-bind "$RUNNER_TEMP/csb-engine/bin" /engine --proc /proc --dev /dev -- /engine/flowdiff --version
+
+      - name: Diagnose exact public canary without publishing
+        env:
+          CANARY_HEAD: e3590e9740124053ccf6b7e4d1185884fa795e06
+        run: |
+          python3 - <<'PYCODE'
+          import os,sys,json,traceback,tempfile
+          from pathlib import Path
+          from datetime import datetime,timezone
+          engine=Path(os.environ['RUNNER_TEMP'])/'csb-engine'
+          sys.path.insert(0,str(Path.cwd()/'scripts'))
+          import public_ci as ci
+          # Report only fixed categories, never native output bytes.
+          source=Path('scripts/public_ci.py').read_text()
+          replacement='stderr.seek(0); diagnostic=stderr.read(4096).lower(); print("native_exit", process.returncode, "tool", "exporter" if "/engine/csb-public-report" in argv else "analyzer", "markers", [word for word in ["git", "resource", "failed", "denied", "export", "bwrap", "limit", "thread", "os error"] if word.encode() in diagnostic], "category", "memory" if b"memory" in diagnostic else "missing_file" if b"no such file" in diagnostic else "permission" if b"permission" in diagnostic else "context" if b"context" in diagnostic else "arguments" if b"argument" in diagnostic else "unknown"); raise Refusal("bounded subprocess failed (details withheld)")'
+          source=source.replace('raise Refusal("bounded subprocess failed (details withheld)")', replacement)
+          exec(compile(source, str(Path('scripts/public_ci.py').resolve()), 'exec'), ci.__dict__)
+          cfg=json.loads(Path('.codeshouldbehave/public-ci.json').read_text())
+          base='ad25c3feff864efb14c3187a08891e72bd588292'
+          req=ci.request_for(cfg,{'pr_number':9,'selected_baseline':base,'proposal':os.environ['CANARY_HEAD']},{'head_sha':os.environ['GITHUB_SHA'],'id':int(os.environ['GITHUB_RUN_ID']),'run_attempt':int(os.environ['GITHUB_RUN_ATTEMPT'])},base,datetime.now(timezone.utc).isoformat().replace('+00:00','Z'))
+          with tempfile.TemporaryDirectory() as t:
+              mirror=Path(t)/'objects'
+              try:
+                  ci.fetch_public_objects(cfg,req,mirror)
+                  print('public_objects_fetched')
+                  ci.analyze(cfg,req,Path.cwd(),engine/'bin',mirror,Path(t)/'worker')
+                  print('native_public_analysis_passed')
+              except Exception as exc:
+                  print('diagnostic_error',type(exc).__name__)
+                  for frame in traceback.extract_tb(exc.__traceback__):
+                      print(Path(frame.filename).name,frame.name,frame.lineno)
+                  raise SystemExit(1)
+          PYCODE

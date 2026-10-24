@@ -54,3 +54,24 @@ files including the public budget observation, policy and context. 82 public
 tests passed, four skipped; config/hashes/budget and main-only Pages access pass.
 See docs/ACTIVATION_STATUS.md. Pending final activation PR merge and actual live
 PR-to-dashboard verification; no live completion claim.
+
+## 2026-10-25 — live canary blocked, no success claim
+
+PR #8 merged at `ad25c3feff864efb14c3187a08891e72bd588292`. Automatic
+nudge and controller delivery verified with review-only PR #9. Budget evidence
+was still fresh; no refresh was fabricated. Empty-queue run 40127428437 passed.
+Canary run 40127500835 attempts 1 and 2 failed before producing a public report.
+
+Read-only Linux probe 40127927031 identified tree_inventory/lstat racing native
+temporary-file replacement. Active sampling now tolerates vanished entries only;
+final inventories remain strict and links remain refused. Public tests: 83 passed,
+four native-dependent tests skipped (Unix-socket suite requires local permissions).
+
+Probe 40128351722 classified a second failure as exporter/limit. Local exact
+comparison succeeded with 22 flow edits; local public export reproduced
+Public projection file/byte limit, including with max_details=8. No budget was
+raised, no report was published, and no HLD/LLD check link has passed acceptance.
+PR #9 remains DO NOT MERGE: it includes synthetic unlinked code and diagnostic
+workflow changes. A bounded public projection fix and fresh verified release are
+required before the live journey can pass. Raw native stderr was not published;
+diagnostics emitted only fixed categories and code locations.

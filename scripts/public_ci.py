@@ -832,7 +832,7 @@ def verdict_conclusion(update: dict) -> str:
     return "success" if update.get("verdict") == "no_change_detected" else "neutral"
 
 
-def tree_inventory(root: Path, byte_cap: int, file_cap: int, *, entry_cap: int | None = None) -> tuple[list[tuple[str, Path]], int]:
+def tree_inventory(root: Path, byte_cap: int, file_cap: int, *, entry_cap: int | None = None, allow_disappeared: bool = False) -> tuple[list[tuple[str, Path]], int]:
     if root.is_symlink() or not root.is_dir():
         raise Refusal("invalid input directory")
     result, total, entries = [], 0, 0
@@ -842,13 +842,24 @@ def tree_inventory(root: Path, byte_cap: int, file_cap: int, *, entry_cap: int |
             if entries > (entry_cap if entry_cap is not None else file_cap * 2 + 16):
                 raise Refusal("directory entry inventory exceeds budget")
             path = Path(directory) / name
-            metadata = path.lstat()
+            try:
+                metadata = path.lstat()
+            except FileNotFoundError:
+                if allow_disappeared:
+                    continue
+                raise
             if stat.S_ISLNK(metadata.st_mode) or not (stat.S_ISDIR(metadata.st_mode) or stat.S_ISREG(metadata.st_mode)) or (stat.S_ISREG(metadata.st_mode) and metadata.st_nlink != 1):
                 raise Refusal("linked or special publication file")
         for name in files:
             path = Path(directory) / name
             rel = relative_path(path.relative_to(root).as_posix())
-            total += path.stat().st_size
+            try:
+                size = path.stat().st_size
+            except FileNotFoundError:
+                if allow_disappeared:
+                    continue
+                raise
+            total += size
             result.append((rel, path))
             if total > byte_cap or len(result) > file_cap:
                 raise Refusal("directory inventory exceeds budget")
@@ -1108,7 +1119,7 @@ def bounded_process(argv: list[str], *, timeout: float, env: dict | None = None,
                 if stdout.tell() + stderr.tell() > 1024 * 1024:
                     raise Refusal("bounded subprocess output exhausted")
                 if watch_directory is not None and watch_directory.exists():
-                    tree_inventory(watch_directory, byte_cap, entry_cap, entry_cap=entry_cap)
+                    tree_inventory(watch_directory, byte_cap, entry_cap, entry_cap=entry_cap, allow_disappeared=True)
                 time.sleep(0.05)
             if process.returncode:
                 raise Refusal("bounded subprocess failed (details withheld)")
